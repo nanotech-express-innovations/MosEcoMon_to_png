@@ -3,19 +3,21 @@
  * and open the template in the editor.
  */
 package converter;
-
-
 import com.thoughtworks.xstream.XStream;
 import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
@@ -24,7 +26,13 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Date;
+import java.util.InvalidPropertiesFormatException;
 import java.util.List;
+import java.util.Properties;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.prefs.Preferences;
 import javax.imageio.ImageIO;
 import org.apache.commons.io.FileUtils;
 
@@ -106,198 +114,369 @@ public class Converter {
         
         String start = "01.01.2099 00:00";
         String finish = "01.01.2000 00:00";
-        String line;
+        String line = "";
         String[] ss;
-        System.out.println("Enter command: ");
-        System.out.println("1 - convert data to xml");
-        System.out.println("2 - load data from xml");
         
-        try{
-	    BufferedReader bufferRead = new BufferedReader(new InputStreamReader(System.in));
-	    line = bufferRead.readLine(); 
-            //line = "2";
-            if("1".equals(line))
+        File configFile = new File("converter.cfg");
+        Properties config = new Properties();
+        try {
+            FileInputStream is= new FileInputStream(configFile);
+            config.loadFromXML(is);
+        } catch (IOException ex) {
+        }
+        /*
+        try {
+            FileOutputStream os= new FileOutputStream(configFile);
+            config.setProperty("data-file", "C:\\ecology\\data.xml");
+            config.setProperty("map-file", "C:\\ecology\\map.png");
+            config.setProperty("output-folder", "C:\\ecology\\output");
+            config.storeToXML(os, "Converter Settings");
+            System.exit(0);
+        } catch (IOException ex) {
+        } */
+        
+
+        
+        
+        if(args.length == 0)
+            System.exit(0);
+        
+        if(args[0].equals("setProperty"))
+        {
+            
+            try {
+                FileOutputStream os = new FileOutputStream(configFile);
+                config.setProperty(args[1], args[2]);
+                config.storeToXML(os, "Converter Settings");
+                System.exit(0);
+            } catch (IOException ex) {
+            }
+            System.exit(0);
+        }
+        
+        if(args[0].equals("convertData"))
+        {
+            convertToXml(args[1]);
+            XStream xstream = new XStream();
+            String xml = xstream.toXML(Stations);
+            try {
+                PrintWriter writer = new PrintWriter(args[2], "UTF-8");
+                writer.println(xml);
+                writer.close();
+            } catch (FileNotFoundException ex) {
+            } catch (UnsupportedEncodingException ex) {
+            }
+            System.exit(0);
+        }
+        
+        if(args[0].equals("dataInfo"))
+        {
+            String data = "";
+            try {
+                data = FileUtils.readFileToString(new File(config.getProperty("data-file")), "UTF-8");
+            } catch (IOException ex) {
+            }
+            
+            XStream xstream = new XStream();
+            Stations = (List<Station>) xstream.fromXML(data);
+          
+            for (int i = 0; i < Stations.size(); i++) {
+                for (int j = 0; j < Stations.get(i).Types.size(); j++) {
+                    if (!UniqTypes.contains(Stations.get(i).Types.get(j))) {
+                        UniqTypes.add(Stations.get(i).Types.get(j));
+                    }
+                }
+            }
+
+
+            System.out.println("Data file: " + config.getProperty("data-file"));
+            System.out.println("Chemicals: " + UniqTypes);
+            System.out.println();
+            
+            for(int k = 0; k < UniqTypes.size(); k++)
             {
-                System.out.println("Enter path to data folder: ");
-                line = bufferRead.readLine();
-                convertToXml(line);
-                System.out.println("Enter path to save xml: ");
-                line = bufferRead.readLine();
+                boolean exists = false;
                 
-                XStream xstream = new XStream();
-                String xml = xstream.toXML(Stations);
+                start = "01.01.2099 00:00";
+                finish = "01.01.2000 00:00";
+
+                for (int i = 0; i < Stations.size(); i++) {
+
+                    for (int j = 0; j < Stations.get(i).Types.size(); j++) {
+                        if (Stations.get(i).Types.get(j).equals(UniqTypes.get(k))) {
+                            exists = true;
+                        }
+                    }
+
+                    if (exists) {
+                        for (int j = 0; j < Stations.get(i).Date.size(); j++) {
+                            try {
+                                c.setTime(df.parse(Stations.get(i).Date.get(j)));
+                                cc.setTime(dff.parse(start));
+                                if (c.before(cc)) {
+                                    start = Stations.get(i).Date.get(j);
+                                }
+                                cc.setTime(dff.parse(finish));
+                                if (c.after(cc)) {
+                                    finish = Stations.get(i).Date.get(j);
+                                }
+                            } catch (ParseException ex) {
+                            }
+                        }
+                    }
+
+                    exists = false;
+                }
+                System.out.println(UniqTypes.get(k));
+                System.out.println("Earliest records: " + start);
+                System.out.println("Most recent records: " + finish);
+                System.out.println();
+
+            }
+                
+            System.out.println("Earliest records: " + start);
+            System.out.println("Most recent records: " + finish);
+
+        }
+
+        
+        if(args[0].equals("generatePng"))
+        {
+            String data = "";
+            try {
+                data = FileUtils.readFileToString(new File(config.getProperty("data-file")), "UTF-8");
+            } catch (IOException ex) {
+            }
+            
+            XStream xstream = new XStream();
+            Stations = (List<Station>) xstream.fromXML(data);
+            
+            String date = "";
+            String type = "";
+            
+            date = args[2];
+            type = args[3];
+            
+            boolean b = true;
+            
+            for (int i = 0; i < Stations.size(); i++) 
+                if (Stations.get(i).Types.contains(type)) 
+                    if (Stations.get(i).Date.contains(date)) 
+                        b = false;
+
+            if (b) {
+                System.out.println("No data about this chemical on this date");
+            }
+            
+            if(args[1].equals("layer"))
+            {
+                BufferedImage image = generateLayer(type, date);
+                String path = "\\layer " + type + " " + date + ".png";
+                path = path.replaceAll(":", ".");
+                path = config.getProperty("output-folder") + path;
+                File imageFile = new File(path);
                 try {
-                    PrintWriter writer = new PrintWriter(line, "UTF-8");
-                    writer.println(xml);
-                    writer.close();
-                } catch (FileNotFoundException ex) {
-                } catch (UnsupportedEncodingException ex) {
+                    ImageIO.write(image, "png", imageFile);
+                } catch (IOException ex) {
                 }
                 System.exit(0);
-            } else
-                if("2".equals(line))
-                {
-                    System.out.println("Enter path to xml: ");
-                    line = bufferRead.readLine();
-                    // = "C:/ecology/data.xml";
-                    line = FileUtils.readFileToString(new File(line), "UTF-8");
-                    XStream xstream = new XStream();
-                    Stations = (List<Station>)xstream.fromXML(line);
-                    line = "";
+            }
+            
+            if(args[1].equals("image"))
+            {
+                try {
+                    BufferedImage image = generateLayer(type, date);
+                    BufferedImage map = ImageIO.read(new File(config.getProperty("map-file"))); 
+                    BufferedImage combination = combineLayers(map, image, type, date);
                     
-                   for(int i = 0; i<Stations.size();i++)
-                   {
-                       for(int j = 0; j<Stations.get(i).Types.size();j++)
-                           if(!UniqTypes.contains(Stations.get(i).Types.get(j)))
-                               UniqTypes.add(Stations.get(i).Types.get(j));
-                       
-                       for(int j = 0; j<Stations.get(i).Date.size();j++)
-                       {
-                           try {
-                               c.setTime(df.parse(Stations.get(i).Date.get(j)));
-                               cc.setTime(dff.parse(start));
-                               if (c.before(cc)) {
-                                   start = Stations.get(i).Date.get(j);
-                               }
-                               cc.setTime(dff.parse(finish));
-                               if (c.after(cc)) {
-                                   finish = Stations.get(i).Date.get(j);
-                               }
-                           } catch (ParseException ex) {
-                           }
-                       }
-                   }
-                   
-                   
-                    System.out.println("Chemicals: " + UniqTypes);
-                    System.out.println("Earliest records: " + start);
-                    System.out.println("Most recent records: " + finish);
-                    System.out.println("Date format: dd.MM.yy HH:mm");
-                    
-                    int typeIndex;
-                    int dateIndex;
-                    String date = "";
-                    String type = "2";
-                    
-                    boolean b = true;
-                    while (b) {
-                        System.out.println("Enter  date and chemical separated by space:");
-                        line = bufferRead.readLine();
-                        //line = "20.11.2012 12:00 CO";
-
-                        ss = line.split(" ");
-                        date = ss[0] + " " + ss[1];
-                        type = ss[2];
-
-                        for (int i = 0; i < Stations.size(); i++) {
-                            if (Stations.get(i).Types.contains(type)) {
-                                if (Stations.get(i).Date.contains(date)) {
-                                    b = false;
-                                }
-                            }
-                        }
-                        if (b) {
-                            System.out.println("No data about this chemical on this date");
-                        }                          
-                    }
-
-                  
-                    for (int i = 0; i < Stations.size(); i++) {
-                        if (Stations.get(i).Types.contains(type)) {
-                            if (Stations.get(i).Date.contains(date)) {
-                                typeIndex = Stations.get(i).Types.indexOf(type);
-                                dateIndex = Stations.get(i).Date.indexOf(date);
-                                weightedPoints.add(new WeightedPoint(Stations.get(i).x, Stations.get(i).y, Stations.get(i).Data.get(typeIndex).get(dateIndex)));
-                            }
-                        }
-                    }
-
-                    
-                    BufferedImage image = getImage(600, 600);
-                    
-                    Graphics2D g2d = image.createGraphics();
-                    g2d.setFont(new Font("Calibri", Font.PLAIN, 20));
-                    g2d.setColor(Color.black);  
-                    g2d.drawString(line, 10, 30);
-                    g2d.drawString(colorRanges.get(0).min+"", 35, 375);
-                    g2d.drawString(colorRanges.get(colorRanges.size()-1).max+"", 35, 560);
-                    g2d.drawRect(19, 359, 11, 201);
-                    
-                    for (int i = 0; i < Stations.size(); i++) {
-                        if (Stations.get(i).Types.contains(type)) {
-                            if (Stations.get(i).Date.contains(date)) {
-                                g2d.drawOval(Stations.get(i).x, Stations.get(i).y, 2, 2);
-                            }
-                        }
-                    }
-                    
-                    int counter = 0;
-                    for (ColorRange r : colorRanges) {
-                        g2d.setColor(r.color);
-                        g2d.fillRect(20, 360+counter*2, 10, 2);
-                        counter++;
-                    }
-                    
-                    System.out.println("Enter path for generated image: ");
-                    String path = bufferRead.readLine();
-                    //path = "C:/ecology/Image.png";
+                    String path = "\\image " + type + " " + date + ".png";
+                    path = path.replaceAll(":", ".");
+                    path = config.getProperty("output-folder") + path;
                     File imageFile = new File(path);
-                    ImageIO.write(image, "png", imageFile);
-                    
-                    System.out.println("Enter path with map file: ");
-                    path = bufferRead.readLine();
-                    //path = "C:/ecology/map.png";
-                    
-                    BufferedImage back = ImageIO.read(new File(path));
-                    BufferedImage alpha = new BufferedImage(600, 600, BufferedImage.TYPE_INT_ARGB);
-                    AlphaComposite ac =  AlphaComposite.getInstance(AlphaComposite.DST_OVER, 0.3f);
-                    g2d = alpha.createGraphics();
-                    g2d.setComposite(ac);                
-                                        
-
-                    g2d.drawImage(back, 0, 0, null);
-                  
-                    g2d.drawImage(image, 0, 0, null);
-                    
-                    g2d.setFont(new Font("Calibri", Font.PLAIN, 20));
-                    g2d.setColor(Color.black);  
-                    ac =  AlphaComposite.getInstance(AlphaComposite.SRC, 1.0f);
-                    g2d.setComposite(ac);
-                    g2d.drawString(line, 10, 30);
-                    g2d.drawString(colorRanges.get(0).min+"", 35, 375);
-                    g2d.drawString(colorRanges.get(colorRanges.size()-1).max+"", 35, 560);
-                    g2d.drawRect(19, 359, 11, 201);
+                    ImageIO.write(combination, "png", imageFile);
+                    System.exit(0);
+                } catch (IOException ex) {
+                }
+            }   
+        }
+        
+        if(args[0].equals("generateGif"))
+        {
+            String data = "";
+            try {
+                data = FileUtils.readFileToString(new File(config.getProperty("data-file")), "UTF-8");
+            } catch (IOException ex) {
+            }
+            
+            XStream xstream = new XStream();
+            Stations = (List<Station>) xstream.fromXML(data);
+            
+            String dateStart = "";
+            String dateFinish = "";
+            int intervalTime = 1;
+            int intervalSlides = 1000;
+            String type = "";
+            
+            dateStart = args[2];
+            dateFinish = args[3];
+            intervalTime = Integer.parseInt(args[4]);
+            type = args[5];
+            intervalSlides = Integer.parseInt(args[6]);
+            
+            boolean b = true;
+            
+            List<BufferedImage> layers = new ArrayList<BufferedImage>();
+            List<String> dates = new ArrayList<String>();
+            
+            
+            SimpleDateFormat parser=new SimpleDateFormat("dd.MM.yyyy HH:mm");
+            try {
+                Calendar c = Calendar.getInstance();
+                Calendar ce = Calendar.getInstance();
+                c.setTime(parser.parse(dateStart));
+                ce.setTime(parser.parse(dateFinish)); 
+                while(c.before(ce))
+                {
+                    String tmp = parser.format(c.getTime());
+                    b = true;
                     for (int i = 0; i < Stations.size(); i++) {
                         if (Stations.get(i).Types.contains(type)) {
-                            if (Stations.get(i).Date.contains(date)) {
-                                g2d.drawOval(Stations.get(i).x, Stations.get(i).y, 2, 2);
+                            if (Stations.get(i).Date.contains(tmp)) {
+                                b = false;
                             }
                         }
                     }
+
+                    if (!b) {
+                        dates.add(tmp);
+                    }   
+                    c.add(Calendar.HOUR, intervalTime);
+                }
+                
+            } catch (ParseException ex) {
+            }
+            for (int i = 0; i < dates.size(); i++) {
+                System.out.println("Generating layer " + i);
+                layers.add(generateLayer(type, dates.get(i)));
+            }
+
+            
+            
+            if(args[1].equals("layer"))
+            {
+                
+                
+                String path = "\\layer " + type + " " + dateStart + "-" + dateFinish + ".gif";
+                path = path.replaceAll(":", ".");
+                path = config.getProperty("output-folder") + path;
+                
+                AnimatedGifEncoder gif = new AnimatedGifEncoder();
+                gif.start(path);
+                gif.setDelay(intervalSlides); 
+                for( int i = 0; i < layers.size(); i++){
+                    System.out.println("Adding layer " + i);
+                    gif.addFrame(layers.get(i));
+                }
                     
-                    System.out.println("Enter path for map+image file: ");
-                    path = bufferRead.readLine();
-                    //path = "C:/ecology/ImageAlpha.png";
-                   imageFile = new File(path);
-                   ImageIO.write(alpha, "png", imageFile);
+                gif.finish();
  
-
+                System.exit(0);
+            }
+            /*
+            if(args[1].equals("image"))
+            {
+                try {
+                    BufferedImage image = generateLayer(type, date);
+                    BufferedImage map = ImageIO.read(new File(config.getProperty("map-file"))); 
+                    BufferedImage combination = combineLayers(map, image, type, date);
                     
-                    System.exit(0);        
-                }
-            else
-                {
+                    String path = "\\image " + type + " " + date + ".png";
+                    path = path.replaceAll(":", ".");
+                    path = config.getProperty("output-folder") + path;
+                    File imageFile = new File(path);
+                    ImageIO.write(combination, "png", imageFile);
                     System.exit(0);
+                } catch (IOException ex) {
                 }
-        } catch(IOException e)
-	{
-	}
+            }
+             
+             */
+        }
         
-
-        
-        
+    }
     
+    static BufferedImage generateLayer(String type, String date)
+    {
+        int typeIndex;
+        int dateIndex;
+        
+        for (int i = 0; i < Stations.size(); i++) {
+            if (Stations.get(i).Types.contains(type)) {
+                if (Stations.get(i).Date.contains(date)) {
+                    typeIndex = Stations.get(i).Types.indexOf(type);
+                    dateIndex = Stations.get(i).Date.indexOf(date);
+                    weightedPoints.add(new WeightedPoint(Stations.get(i).x, Stations.get(i).y, Stations.get(i).Data.get(typeIndex).get(dateIndex)));
+                }
+            }
+        }
 
+
+        BufferedImage image = getImage(600, 600);
+
+        Graphics2D g2d = image.createGraphics();
+        g2d.setFont(new Font("Calibri", Font.PLAIN, 20));
+        g2d.setColor(Color.black);
+        g2d.drawString(date + " " + type, 10, 30);
+        g2d.drawString(colorRanges.get(0).min + "", 35, 375);
+        g2d.drawString(colorRanges.get(colorRanges.size() - 1).max + "", 35, 560);
+        g2d.drawRect(19, 359, 11, 201);
+
+        for (int i = 0; i < Stations.size(); i++) {
+            if (Stations.get(i).Types.contains(type)) {
+                if (Stations.get(i).Date.contains(date)) {
+                    g2d.drawOval(Stations.get(i).x, Stations.get(i).y, 2, 2);
+                }
+            }
+        }
+
+        int counter = 0;
+        for (ColorRange r : colorRanges) {
+            g2d.setColor(r.color);
+            g2d.fillRect(20, 360 + counter * 2, 10, 2);
+            counter++;
+        }
+
+        return image;
+    }
+    
+    static BufferedImage combineLayers(BufferedImage back, BufferedImage image, String type, String date)
+    {
+        BufferedImage combination = new BufferedImage(600, 600, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = combination.createGraphics();
+
+        g2d.drawImage(back, 0, 0, null);
+        
+        AlphaComposite ac = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.3f);
+        g2d.setComposite(ac);
+        g2d.drawImage(image, 0, 0, null);
+
+        g2d.setFont(new Font("Calibri", Font.PLAIN, 20));
+        g2d.setColor(Color.black);
+        ac = AlphaComposite.getInstance(AlphaComposite.SRC, 1.0f);
+        g2d.setComposite(ac);
+        g2d.drawString(date + " " + type, 10, 30);
+        g2d.drawString(colorRanges.get(0).min + "", 35, 375);
+        g2d.drawString(colorRanges.get(colorRanges.size() - 1).max + "", 35, 560);
+        g2d.drawRect(19, 359, 11, 201);
+        for (int i = 0; i < Stations.size(); i++) {
+            if (Stations.get(i).Types.contains(type)) {
+                if (Stations.get(i).Date.contains(date)) {
+                    g2d.drawOval(Stations.get(i).x, Stations.get(i).y, 2, 2);
+                }
+            }
+        }
+        
+        return combination;
     }
     
     static void convertToXml(String path)
