@@ -253,6 +253,9 @@ public class Converter {
             
             String date = "";
             String type = "";
+            int typeIndex = 0;
+            int dateIndex = 0;
+            double max = 0.0;
             
             date = args[2];
             type = args[3];
@@ -262,11 +265,21 @@ public class Converter {
             for (int i = 0; i < Stations.size(); i++) 
                 if (Stations.get(i).Types.contains(type)) 
                     if (Stations.get(i).Date.contains(date)) 
+                    {
+                        typeIndex = Stations.get(i).Types.indexOf(type);
+                        dateIndex = Stations.get(i).Date.indexOf(date);
+                        if (max < Stations.get(i).Data.get(typeIndex).get(dateIndex)) {
+                            max = Stations.get(i).Data.get(typeIndex).get(dateIndex);
+                        }
                         b = false;
+                    }
 
             if (b) {
                 System.out.println("No data about this chemical on this date");
+                System.exit(0);
             }
+            
+            initializeColors(max);
             
             if(args[1].equals("layer"))
             {
@@ -316,6 +329,9 @@ public class Converter {
             int intervalTime = 1;
             int intervalSlides = 1000;
             String type = "";
+            int typeIndex = 0;
+            int dateIndex = 0;
+            double max = 0.0;
             
             dateStart = args[2];
             dateFinish = args[3];
@@ -342,6 +358,10 @@ public class Converter {
                     for (int i = 0; i < Stations.size(); i++) {
                         if (Stations.get(i).Types.contains(type)) {
                             if (Stations.get(i).Date.contains(tmp)) {
+                                typeIndex = Stations.get(i).Types.indexOf(type);
+                                dateIndex = Stations.get(i).Date.indexOf(tmp);
+                                if(max < Stations.get(i).Data.get(typeIndex).get(dateIndex))
+                                    max = Stations.get(i).Data.get(typeIndex).get(dateIndex);
                                 b = false;
                             }
                         }
@@ -355,9 +375,20 @@ public class Converter {
                 
             } catch (ParseException ex) {
             }
+            
+            initializeColors(max);
+            
             for (int i = 0; i < dates.size(); i++) {
                 System.out.println("Generating layer " + i);
                 layers.add(generateLayer(type, dates.get(i)));
+                String path = "\\layer " + type + " " + dates.get(i) + ".png";
+                path = path.replaceAll(":", ".");
+                path = config.getProperty("output-folder") + path;
+                File imageFile = new File(path);
+                try {
+                    ImageIO.write(layers.get(i), "png", imageFile);
+                } catch (IOException ex) {
+                }
             }
 
             
@@ -372,7 +403,8 @@ public class Converter {
                 
                 AnimatedGifEncoder gif = new AnimatedGifEncoder();
                 gif.start(path);
-                gif.setDelay(intervalSlides); 
+                gif.setDelay(intervalSlides);
+                gif.setRepeat(0);
                 for( int i = 0; i < layers.size(); i++){
                     System.out.println("Adding layer " + i);
                     gif.addFrame(layers.get(i));
@@ -382,25 +414,32 @@ public class Converter {
  
                 System.exit(0);
             }
-            /*
+            
             if(args[1].equals("image"))
             {
                 try {
-                    BufferedImage image = generateLayer(type, date);
-                    BufferedImage map = ImageIO.read(new File(config.getProperty("map-file"))); 
-                    BufferedImage combination = combineLayers(map, image, type, date);
-                    
-                    String path = "\\image " + type + " " + date + ".png";
+                    String path = "\\layer " + type + " " + dateStart + "-" + dateFinish + ".gif";
                     path = path.replaceAll(":", ".");
                     path = config.getProperty("output-folder") + path;
-                    File imageFile = new File(path);
-                    ImageIO.write(combination, "png", imageFile);
+                    
+                    BufferedImage map = ImageIO.read(new File(config.getProperty("map-file")));
+                    AnimatedGifEncoder gif = new AnimatedGifEncoder();
+                    gif.start(path);
+                    gif.setDelay(intervalSlides);
+                    gif.setRepeat(0);
+                    for( int i = 0; i < layers.size(); i++){
+                        System.out.println("Adding layer " + i);
+                        gif.addFrame(combineLayers(map, layers.get(i), type, dates.get(i)));
+                    }
+                        
+                    gif.finish();
+     
                     System.exit(0);
                 } catch (IOException ex) {
                 }
             }
              
-             */
+             
         }
         
     }
@@ -590,11 +629,11 @@ public class Converter {
     
     static void initializeColors(double max) {
  
-        float r = 8.0f;
+        float r = 0.33f;
         int n = 100;
  
         for (int i = 0; i < n; i++) {
-            r -= 0.7999f / n;
+            r += 0.7222f / n;
  
             colorRanges.add(new ColorRange(i * (max / n), i * (max / n)
                     + (max / n), Color.getHSBColor(r, 1f, 1f)));
@@ -617,9 +656,7 @@ public class Converter {
                     max = imgArray[i][j];
             }
          }
-         max = max;
-        initializeColors(max);
-        
+
         
         drawImage(bufferedImage, imgArray);
  
